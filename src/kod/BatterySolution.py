@@ -1,4 +1,4 @@
-from visuals import plotGroups, plotBridges
+from src.kod.visuals import plotGroups, plotBridges
 
 import numpy as np
 from scipy.sparse import csr_matrix
@@ -71,19 +71,54 @@ class BatterySolution:
         if not cells_in_group:
             return True
 
-        remaining = set(cells_in_group)
-        start_node = next(iter(remaining))
-        stack = [start_node]
-        remaining.remove(start_node)
-        
-        while stack:
-            current_id = stack.pop()
-            for neighbour_id in self.pack.get_neighbours_ids(current_id):
-                if neighbour_id in remaining:
-                    remaining.remove(neighbour_id)
-                    stack.append(neighbour_id)
-                    
-        return len(remaining) == 0
+        # IZMJENA: isti DFS kao u originalu, samo izvucen u pomocnu funkciju da se moze
+        # primijeniti i na uniju dviju grupa, a ne samo na jednu grupu
+        def connected(cells):
+            remaining = set(cells)
+            stack = [remaining.pop()]
+            while stack:
+                current_id = stack.pop()
+                for neighbour_id in self.pack.get_neighbours_ids(current_id):
+                    if neighbour_id in remaining:
+                        remaining.remove(neighbour_id)
+                        stack.append(neighbour_id)
+            return not remaining
+
+        # IZMJENA: prva i zadnja grupa ostaju kompaktne jer im je druga strana izvod paketa
+        if group_id in (0, self.pack.no_groups - 1) and not connected(cells_in_group):
+            return False
+
+        # IZMJENA: traka izmedju susjednih grupa je jedan komad metala koji mora spojiti SVE celije
+        # obje grupe, pa unija grupa g i g+1 (isto tako g-1 i g) mora biti povezana.
+        # Sama grupa NE mora biti kompaktna. Za kompaktne grupe ovo je isto sto je is_valid
+        # vec provjeravao (grupe se dodiruju), pa se postojece ponasanje ne mijenja.
+        for other in (group_id - 1, group_id + 1):
+            if 0 <= other < self.pack.no_groups and self.group_dict.get(other):
+                if not connected(cells_in_group | self.group_dict[other]):
+                    return False
+                # IZMJENA: dvije susjedne grupe ne smiju istovremeno biti razdvojene. Time se
+                # izbjegavaju slozene trake i raspad trake izmedju dvije razdvojene grupe.
+                if not connected(cells_in_group) and not connected(self.group_dict[other]):
+                    return False
+        return True
+
+    def count_components(self, group_id):
+        """
+        IZMJENA: vraca broj povezanih komponenti grupe (1 = kompaktna grupa). Koristi se za kaznu
+        u fitnessu.
+        """
+        remaining = set(self.group_dict.get(group_id, set()))
+        count = 0
+        while remaining:
+            count += 1
+            stack = [remaining.pop()]
+            while stack:
+                current_id = stack.pop()
+                for neighbour_id in self.pack.get_neighbours_ids(current_id):
+                    if neighbour_id in remaining:
+                        remaining.remove(neighbour_id)
+                        stack.append(neighbour_id)
+        return count
 
     def is_valid(self):
         """
@@ -376,9 +411,34 @@ class BatterySolution:
                         distances[neighbor_id] = current_dist + 1
                         queue.append(neighbor_id)
 
+        # IZMJENA: celije koje BFS nije dosegao su odvojene komponente grupe bez mosta u ovom paru.
+        # Bez ovoga bi ostale inf, np.var bi dao nan i fitness bi se pokvario. Dobivaju najvecu
+        # dosegnutu udaljenost (a ne prosjek): prosjek bi snizavao srednju udaljenost i varijancu,
+        # pa bi se odvajanje blago nagradjivalo iako nije dodalo nijedan most.
+        reached = [dist for dist in distances.values() if dist != float('inf')]
+        neutral = max(reached) if reached else 0
+        for c_id in distances:
+            if distances[c_id] == float('inf'):
+                distances[c_id] = neutral
+
         return distances
 
-    def find_optimal_bridges_and_score(self, group_id, target_group, w_mean=1.0, w_var=2.0, w_load=1.5, verbose=True):
+    def _count_covered(self, cells_in_group, bridge_sources, max_hops=1):
+        """
+        IZMJENA: broji celije koje su sam most ili su najvise max_hops koraka (kroz celije iste
+        grupe) udaljene od mosta. Namjerno ne koristi _run_bfs jer ta funkcija odvojenim
+        komponentama daje neutralnu udaljenost, a one se ne smiju racunati kao pokrivene.
+        """
+        cells = set(cells_in_group)
+        covered = set(b for b in bridge_sources if b in cells)
+        frontier = set(covered)
+        for _ in range(max_hops):
+            frontier = {n for c in frontier for n in self.pack.get_neighbours_ids(c)
+                        if n in cells and n not in covered}
+            covered |= frontier
+        return len(covered)
+
+    def find_optimal_bridges_and_score(self, group_id, target_group, w_mean=1.0, w_var=2.0, w_load=1.5, verbose=True, max_hops=1):
         """
         pronalazi optimalnu kombinaciju neovisnih mostova i ocjenjuje obje grupe.
 
@@ -389,6 +449,7 @@ class BatterySolution:
             w_var (float): tezina varijance udaljenosti
             w_load (float): tezina opterecenja mosta
             verbose (bool): zastavica za ispis detalja
+            max_hops (int): koliko koraka od mosta celija jos smatramo pokrivenom (vidi effective_bridges)
 
         povratna vrijednost:
             dict: detaljni rezultati o najboljoj kombinaciji mostova ili none ako nema parova
@@ -463,6 +524,11 @@ class BatterySolution:
                     'bridge_cells_g1': list(bridge_sources_g1),
                     'bridge_cells_g2': list(bridge_sources_g2),
                     'num_bridges': num_bridges,
+                    # IZMJENA: broj "pokrivenih" celija = celije s vlastitim mostom + celije koje su
+                    # najvise max_hops od mosta; uzima se manja od dvije strane. Koristi se u
+                    # fitnessu umjesto strogog broja neovisnih mostova (num_bridges).
+                    'effective_bridges': min(self._count_covered(cells_g1, bridge_sources_g1, max_hops),
+                                             self._count_covered(cells_g2, bridge_sources_g2, max_hops)),
                     'cell_distances_g1': distances_g1,
                     'cell_distances_g2': distances_g2,
                     'mean_distance_g1': mean_d1,
@@ -481,7 +547,7 @@ class BatterySolution:
 
         return best_result
 
-    def calculate_total_fitness(self, w_score=2.0, w_min_bridges=5.0, w_total_bridges=1.0, w_bridge_balance=2.0):
+    def calculate_total_fitness(self, w_score=2.0, w_min_bridges=5.0, w_total_bridges=1.0, w_bridge_balance=2.0, w_split=0.5, max_hops=1):
         """
         racuna ukupnu ocjenu (fitness) cjelokupnog rasporeda grupa u bateriji.
 
@@ -490,6 +556,8 @@ class BatterySolution:
             w_min_bridges (float): tezina minimalnog broja mostova
             w_total_bridges (float): tezina ukupnog broja mostova
             w_bridge_balance (float): kazna za neujednacenost broja mostova
+            w_split (float): kazna za svaku dodatnu komponentu (odvojenu cijelu) u grupama
+            max_hops (int): koliko koraka od mosta se celija jos racuna kao pokrivena
 
         povratna vrijednost:
             float: izracunati ukupni fitness
@@ -505,7 +573,7 @@ class BatterySolution:
             g1 = valid_groups[i]
             g2 = valid_groups[i + 1]
 
-            bridge_result = self.find_optimal_bridges_and_score(group_id=g1, target_group=g2, w_mean=1.0, w_var=2.0, w_load=1.5, verbose=False)
+            bridge_result = self.find_optimal_bridges_and_score(group_id=g1, target_group=g2, w_mean=1.0, w_var=2.0, w_load=1.5, verbose=False, max_hops=max_hops)
 
             if bridge_result is None:
                 self.fitness = -float('inf')
@@ -517,7 +585,8 @@ class BatterySolution:
             self.fitness = -float('inf')
             return self.fitness
 
-        bridge_counts = [r['num_bridges'] for r in bridge_results]
+        # IZMJENA: u fitnessu se broje pokrivene celije (effective_bridges), a ne samo neovisni mostovi
+        bridge_counts = [r['effective_bridges'] for r in bridge_results]
         bridge_scores = [r['bridge_score'] for r in bridge_results]
 
         min_bridges = min(bridge_counts)
@@ -526,7 +595,10 @@ class BatterySolution:
         bridge_variance = np.var(bridge_counts)
         mean_bridge_score = np.mean(bridge_scores)
 
-        self.fitness = (w_min_bridges * min_bridges + w_total_bridges * total_bridges + w_score * mean_bridge_score - w_bridge_balance * bridge_variance)
+        # IZMJENA: kazna za odvojene celije. Isplati se samo ako time naraste broj mostova
+        # (jedan dodatni most vrijedi barem w_total_bridges = 1, a kazna je 0.5 po komponenti).
+        extra_components = sum(self.count_components(g) - 1 for g in valid_groups)
+        self.fitness = (w_min_bridges * min_bridges + w_total_bridges * total_bridges + w_score * mean_bridge_score - w_bridge_balance * bridge_variance - w_split * extra_components)
         self.bridge_results = bridge_results
 
         self.fitness_details = {

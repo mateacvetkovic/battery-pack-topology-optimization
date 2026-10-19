@@ -1,5 +1,5 @@
 import random
-from heuristics import check_simple_solution, snake_pattern_rows, snake_pattern_bottom_up, snake_pattern_columns, max_shared_boundary_distance_based_universal_smart
+from src.kod.heuristics import check_simple_solution, snake_pattern_rows, snake_pattern_bottom_up, snake_pattern_columns, max_shared_boundary_distance_based_universal_smart
 
 
 def remove_duplicates(population):

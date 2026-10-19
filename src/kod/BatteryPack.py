@@ -4,9 +4,9 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from matplotlib.path import Path
 from matplotlib.patches import Polygon
-from grids import Cell, Grid
-from visuals import plotGrid
-from BatterySolution import BatterySolution
+from src.kod.grids import Cell, Grid
+from src.kod.visuals import plotGrid
+from src.kod.BatterySolution import BatterySolution
 
 class BatteryPack:
     """

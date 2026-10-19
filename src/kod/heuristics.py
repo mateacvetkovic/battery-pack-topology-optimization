@@ -1,8 +1,8 @@
 from collections import deque
 import math
 import random
-from BatterySolution import BatterySolution
-from grids import HexGrid, RectangularGrid
+from src.kod.BatterySolution import BatterySolution
+from src.kod.grids import HexGrid, RectangularGrid
 import numpy as np
 
 

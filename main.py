@@ -5,12 +5,12 @@ from datetime import datetime
 
 import matplotlib.pyplot as plt
 
-from grids import HexGrid, RectangularGrid
-from containers import TriangleContainer
-from BatteryPack import BatteryPack
-from BatterySolution import BatterySolution
-from optimizers import TriangleContainerOptimizer
-from IALG import ClonalgOptimizer
+from src.kod.grids import HexGrid, RectangularGrid
+from src.kod.containers import TriangleContainer
+from src.kod.BatteryPack import BatteryPack
+from src.kod.BatterySolution import BatterySolution
+from src.kod.optimizers import TriangleContainerOptimizer
+from src.kod.IALG import ClonalgOptimizer
 
 CELL_SPECS = {
     '18650': {'diameter': 18, 'nominal_voltage': 3.6}, # mm, V
@@ -246,8 +246,8 @@ def run_optimization(pack, inputs):
     best_sol_ever = None
     best_fitness_ever = 0
 
-    for i in range(1):
-        print(f"{i+1}/1 pokušaja")
+    for i in range(3):
+        print(f"{i+1}/3 pokušaja")
         optimizer = ClonalgOptimizer(pack, max_iterations=500, population_size=50)
         best_solutions = optimizer.run()  
         print(f"Pronađeno {len(best_solutions)} rješenja.")
