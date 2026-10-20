@@ -1,5 +1,5 @@
 import random
-from src.kod.heuristics import check_simple_solution, snake_pattern_rows, snake_pattern_bottom_up, snake_pattern_columns, max_shared_boundary_distance_based_universal_smart
+from src.kod.heuristics import skewed_sweep,check_simple_solution, snake_pattern_rows, snake_pattern_bottom_up, snake_pattern_columns, max_shared_boundary_distance_based_universal_smart
 
 
 def remove_duplicates(population):
@@ -75,6 +75,10 @@ def generate_initial_population(pack, population_size=10, snakes=True):
             try_add_solution(sol)
 
     strategies = ["horizontal", "vertical", "diagonal"]
+    for _ in range(population_size * 3):
+        sol = skewed_sweep(pack, axis=random.choice(["x", "y"]), reverse=random.choice([False, True]),
+                           amp=random.choice([0.5, 1.0, 1.5, 2.0]), noise=random.choice([0.0, 0.3]))
+        try_add_solution(sol)
     directions = {
         "horizontal": ["top-down", "bottom-up"],
         "vertical": ["left-to-right", "right-to-left"],

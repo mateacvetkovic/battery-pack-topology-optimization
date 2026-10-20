@@ -761,3 +761,47 @@ def check_simple_solution(pack):
         return sol
 
     return None
+
+# DODATI NA KRAJ heuristics.py (koristi vec postojece importe: random, BatterySolution)
+
+
+def skewed_sweep(pack, axis="x", reverse=False, amp=1.0, noise=0.0, void_id=-1):
+    """
+    NOVA heuristika: "iskrivljeno pometanje". Sve slobodne celije sortira po jednom smjeru (x ili y),
+    ali svaki red (ili stupac) dobije vlastiti nasumican pomak, pa se grupe od uzastopnih celija
+    u tom redoslijedu ne moraju poklapati s ravnim trakama: smiju biti nekompaktne i ispreplesti se
+    sa susjednima. Zasto radi: grupa g i g+1 su uzastopni komadi istog poretka, pa se i dalje
+    dodiruju, a nekompaktna grupa je uvijek "uglavljena" izmedju svojih susjeda. Valjanost
+    (povezana unija g i g+-1) se ipak provjerava naknadno u generate_initial_population.
+
+    Argumenti:
+        pack (BatteryPack): paket s definiranim bms celijama.
+        axis (str): "x" - trake idu slijeva nadesno (pomak po redovima), "y" - odozdo prema gore
+            (pomak po stupcima).
+        reverse (bool): obrnut smjer pometanja.
+        amp (float): najveci pomak reda/stupca, u koracima najmanjeg razmaka celija po osi.
+        noise (float): dodatni sitni sum po celiji (u istim jedinicama), 0 = bez suma.
+        void_id (int): id za viska celija koje ne upadaju ni u jednu grupu.
+
+    Vraca:
+        BatterySolution | None: rjesenje, ili None ako nema dovoljno celija.
+    """
+    cells = [c for c in pack.grid.cells if c is not None and c.id not in pack.bms_cell_ids]
+    n = pack.no_cells_per_group
+    if len(cells) < n * pack.no_groups:
+        return None
+
+    pos = (lambda c: c.x) if axis == "x" else (lambda c: c.y)
+    line = (lambda c: c.row) if axis == "x" else (lambda c: c.col)
+    values = sorted({round(pos(c), 6) for c in cells})
+    pitch = min((b - a for a, b in zip(values, values[1:])), default=1.0)
+
+    shifts = {l: random.uniform(-amp, amp) * pitch for l in {line(c) for c in cells}}
+    sign = -1 if reverse else 1
+    ordered = sorted(cells, key=lambda c: (
+        sign * (pos(c) + shifts[line(c)] + random.uniform(-noise, noise) * pitch), c.id))
+
+    sol = BatterySolution(pack)
+    for i, c in enumerate(ordered):
+        sol.assign_cell_to_group(c.id, i // n if i < n * pack.no_groups else void_id)
+    return sol
