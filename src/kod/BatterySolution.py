@@ -100,6 +100,58 @@ class BatterySolution:
                 # izbjegavaju slozene trake i raspad trake izmedju dvije razdvojene grupe.
                 # if not connected(cells_in_group) and not connected(self.group_dict[other]):
                 #     return False
+                # NOVO: odvojeni dijelovi grupe moraju imati dovoljno razlicitih spojeva prema susjednoj
+                # grupi, u OBA smjera (vidi _pieces_have_own_bridges). Ovdje se provjerava jer mutacije
+                # pozivaju upravo ovu funkciju, pa nevaljana particija nikad ne nastane.
+                if not self._pieces_have_own_bridges(group_id, other) or not self._pieces_have_own_bridges(other, group_id):
+                    return False
+        return True
+
+    # NOVO: dijeli skup celija na povezane komponente (kompaktne dijelove)
+    def get_components(self, cells):
+        remaining = set(cells)
+        components = []
+        while remaining:
+            component = {remaining.pop()}
+            stack = list(component)
+            while stack:
+                current_id = stack.pop()
+                for neighbour_id in self.pack.get_neighbours_ids(current_id):
+                    if neighbour_id in remaining:
+                        remaining.remove(neighbour_id)
+                        component.add(neighbour_id)
+                        stack.append(neighbour_id)
+            components.append(component)
+        return components
+
+    # NOVO: pravilo za razdvojene grupe. Ako je grupa g razbijena na vise kompaktnih dijelova, SVAKI dio
+    # (i najveci) od k celija mora imati k RAZLICITIH spojeva prema grupi target (maksimalno uparivanje
+    # pokriva svaku celiju dijela; svaka celija s obje strane koristi se najvise jednom). Dio od 3
+    # celija s manje od 3 spoja nije dopusten. Dijelovi se gledaju svaki za sebe: smiju dijeliti iste
+    # celije iduce grupe (struja tada ide visestruko kroz isti most), a to se vec kaznjava u fitnessu
+    # kroz manji broj jedinstvenih mostova. Nerazbijena grupa nema novo ogranicenje.
+    def _pieces_have_own_bridges(self, g, target):
+        cells = self.group_dict.get(g, set())
+        target_cells = self.group_dict.get(target, set())
+        if len(cells) < 2 or not target_cells:
+            return True
+        components = self.get_components(cells)
+        if len(components) < 2:
+            return True
+        for component in components:
+            cells_c = list(component)
+            t_index = {}
+            rows, cols = [], []
+            for i, c in enumerate(cells_c):
+                for n in self.pack.get_neighbours_ids(c):
+                    if n in target_cells:
+                        rows.append(i)
+                        cols.append(t_index.setdefault(n, len(t_index)))
+            if len(t_index) < len(cells_c):
+                return False
+            graph = csr_matrix((np.ones(len(rows), dtype=int), (rows, cols)), shape=(len(cells_c), len(t_index)))
+            if int(np.sum(maximum_bipartite_matching(graph, perm_type='column') != -1)) < len(cells_c):
+                return False
         return True
 
     def count_components(self, group_id):

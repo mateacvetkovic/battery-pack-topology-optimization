@@ -237,10 +237,10 @@ def run_optimization(pack, inputs):
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     if shape_type == 'rectangle':
         W, H = inputs['dimensions_cm']
-        file_name = f"baterija_{grid_type}_{shape_type}_W{W}_H{H}_{timestamp}"
+        file_name = f"slike/baterija_{grid_type}_{shape_type}_W{W}_H{H}_{timestamp}"
     else:
         a,b,c = inputs['dimensions_cm']
-        file_name = f"baterija_{grid_type}_{shape_type}_A{a}_B{b}_C{c}_{timestamp}"
+        file_name = f"slike/baterija_{grid_type}_{shape_type}_A{a}_B{b}_C{c}_{timestamp}"
     file_name = file_name.replace(".", ",")
 
     best_sol_ever = None
@@ -261,15 +261,26 @@ def run_optimization(pack, inputs):
 
             file_name_it = f"{file_name}_it{i+1}_id{id}.png"
 
-            print(f"\n-> Ukupna ocjena kvalitete paketa (Fitness): {fitness_val:.2f}")  
-            print(f"-> Minimalan broj direktnih spojeva između ikojih susjednih grupa: {eval_info['min_bridges']}")  
-            print(f"-> Ukupan broj direktnih serijskih spojeva u paketu/idealan broj spojeva: {eval_info['total_bridges']}/{pack.no_cells_per_group*(pack.no_groups-1)}")  
-            if eval_info['total_bridges'] == pack.no_cells_per_group*(pack.no_groups-1):
-                best_solution.display(save=True, name=file_name_it)
-                print(f"-> Slika spremljena na lokaciju: {os.path.join(current_dir, file_name_it)}")
-                break
-            if eval_info['worst_group'] is not None:
-                print(f"-> Najkritičnija grupa s najmanje direktnih spojeva: Grupa {eval_info['worst_group']}")  
+            # print(f"\n-> Ukupna ocjena kvalitete paketa (Fitness): {fitness_val:.2f}")  
+            # print(f"-> Minimalan broj direktnih spojeva između ikojih susjednih grupa: {eval_info['min_bridges']}")  
+            # print(f"-> Ukupan broj direktnih serijskih spojeva u paketu/idealan broj spojeva: {eval_info['total_bridges']}/{pack.no_cells_per_group*(pack.no_groups-1)}")  
+            # if eval_info['total_bridges'] == pack.no_cells_per_group*(pack.no_groups-1):
+            #     best_solution.display(save=True, name=file_name_it)
+            #     print(f"-> Slika spremljena na lokaciju: {os.path.join(current_dir, file_name_it)}")
+            #     break
+            # if eval_info['worst_group'] is not None:
+            #     print(f"-> Najkritičnija grupa s najmanje direktnih spojeva: Grupa {eval_info['worst_group']}")  
+            S, P = pack.no_groups, pack.no_cells_per_group
+            ideal = P * (S - 1)
+            pairs = eval_info['connection_results']  # (g, g+1) -> rezultat za taj par grupa
+            unique = sum(r['num_bridges'] for r in pairs.values())
+            split_groups = [g for g, cells in best_solution.group_dict.items() if len(best_solution.get_components(cells)) > 1]
+            worst_pair = min(pairs, key=lambda k: pairs[k]['num_bridges'])
+
+            print(f"\n-> Fitness: {fitness_val:.2f}")
+            print(f"-> Jedinstveni (izravni) mostovi: {unique}/{ideal}  (najmanje u paru: {eval_info['min_bridges']})")
+            print(f"-> Najslabiji par grupa: G{worst_pair[0]}-G{worst_pair[1]} ({pairs[worst_pair]['num_bridges']}/{P} jedinstvenih mostova)")
+            print(f"-> Razdvojene grupe: {split_groups if split_groups else 'nema, sve su kompaktne'}")
 
             print("\nGeneriranje grafičkog prikaza konačnog paketa...")
             if (id==0):
