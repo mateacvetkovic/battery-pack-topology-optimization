@@ -530,6 +530,12 @@ class BatterySolution:
             
             total_mean_d = (mean_d1 + mean_d2) / 2.0
             total_var_d = max(var_d1, var_d2)
+
+            # NOVO: "daleka" celija = vise od 1 skoka (unutar grupe) od celije koja ima most. Celija na 1 skoku
+            # je ok, svaka na 2+ skoka kosta jednako (ravno, bez kvadrata). Zbraja se po svim parovima, ne
+            # prosjecuje, da se jedan dugi lanac ne izgubi u prosjeku. Bez lanaca je vrijednost 0, pa se
+            # kazna sama "iskljuci" kad lanaca nema (tipicno pravokutnik); djeluje na trokutu.
+            far_cost = sum(1 for d in dist_vals_g1 if d >= 2) + sum(1 for d in dist_vals_g2 if d >= 2)
             
             num_bridges = len(comb)
             max_bridge_load = max(len(cells_g1) / num_bridges, len(cells_g2) / num_bridges)
@@ -566,7 +572,8 @@ class BatterySolution:
                     'combined_mean_distance': total_mean_d,
                     'combined_max_variance': total_var_d,
                     'max_bridge_load': max_bridge_load,
-                    'bridge_score': combo_score
+                    'bridge_score': combo_score,
+                    'far_cost': far_cost
                 }
 
         if verbose and best_result:
@@ -577,7 +584,11 @@ class BatterySolution:
 
         return best_result
 
-    def calculate_total_fitness(self, w_score=2.0, w_min_bridges=5.0, w_total_bridges=1.0, w_bridge_balance=2.0, w_split=0):
+    # NOVO: zadana tezina kazne za daleke celije. 0 = iskljuceno. IALG.run je postavlja na 2 SAMO ako konacno
+    # rjesenje faze 1 ima celije na 2+ skoka od mosta (vidi ClonalgOptimizer.run).
+    W_FAR = 0.0
+
+    def calculate_total_fitness(self, w_score=2.0, w_min_bridges=5.0, w_total_bridges=1.0, w_bridge_balance=2.0, w_split=0, w_far=None):
         """
         racuna ukupnu ocjenu (fitness) cjelokupnog rasporeda grupa u bateriji.
 
@@ -626,7 +637,13 @@ class BatterySolution:
         # IZMJENA: kazna za odvojene celije. Isplati se samo ako time naraste broj mostova
         # (jedan dodatni most vrijedi barem w_total_bridges = 1, a kazna je 0.5 po komponenti).
         extra_components = sum(self.count_components(g) - 1 for g in valid_groups)
-        self.fitness = (w_min_bridges * min_bridges + w_total_bridges * total_bridges + w_score * mean_bridge_score - w_bridge_balance * bridge_variance - w_split * extra_components)
+        # NOVO: kazna za daleke celije (2+ skoka od mosta); aktivna samo kad je W_FAR > 0 (postavlja je IALG.run).
+        far_total = sum(r['far_cost'] for r in bridge_results)
+        self.far_total = far_total  # IALG.run po tome odlucuje treba li ukljuciti kaznu
+        if w_far is None:
+            w_far = self.W_FAR
+        self.fitness = (w_min_bridges * min_bridges + w_total_bridges * total_bridges + w_score * mean_bridge_score - w_bridge_balance * bridge_variance - w_split * extra_components
+                        - w_far * far_total)
         self.bridge_results = bridge_results
 
         self.fitness_details = {

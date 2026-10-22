@@ -133,8 +133,8 @@ def get_dist_to_segment(p, a, b):
     ab = b - a
     ap = p - a
     L = np.linalg.norm(ab)
-    distance = abs(np.cross(ab, ap)) / L
-    
+    #distance = abs(np.cross(ab, ap)) / L
+    distance = abs(ab[0] * ap[1] - ab[1] * ap[0]) / L
     return distance
 
 

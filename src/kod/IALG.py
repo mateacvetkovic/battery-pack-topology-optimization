@@ -148,15 +148,45 @@ class ClonalgOptimizer:
         self.final_population=[]
 
         self.avg_fitness = []
-    def run(self):
+
+    def run(self, w_far=2.0, phase2_fraction=0.5):
+        # faza 1 = dosadasnji algoritam bez kazne za daleke celije
+        best = self._run_phase()
+        if not best or w_far <= 0:
+            return best
+        best[0].calculate_total_fitness()
+        if best[0].far_total == 0:
+            return best  # nema dalekih celija, faza 2 se ne pokrece
+        # faza 2: ista populacija, ali s kaznom za daleke celije (2+ koraka)
+        print(f"[CLONALG] rjesenje ima daleke celije ({best[0].far_total}); faza 2 s w_far={w_far}")
+        sol_cls = type(best[0])
+        sol_cls.W_FAR = w_far
+        try:
+            population = [ind.copy() for ind in self.final_population]
+            for ind in population:
+                ind.calculate_total_fitness()
+            self.best_ever_fitness = -float('inf')
+            self.best_ever_solution = None
+            iters = self.max_iterations
+            self.max_iterations = max(1, int(iters * phase2_fraction))
+            best = self._run_phase(population)
+            self.max_iterations = iters
+        finally:
+            sol_cls.W_FAR = 0.0
+        return best    
+    def _run_phase(self,  population=None):
         """
         pokrece glavnu petlju algoritma s evolucijskim operacijama.
 
         Vraca:
             object: najbolje pronadjeno rjesenje (jedinka) tijekom izvodjenja.
         """
-        population = generate_initial_population(self.pack, self.population_size, snakes=True)
-        self.start_population = [ind.copy() for ind in population]
+        # population = generate_initial_population(self.pack, self.population_size, snakes=True)
+        # self.start_population = [ind.copy() for ind in population]
+        # stag = 0
+        if population is None:
+            population = generate_initial_population(self.pack, self.population_size, snakes=True)
+            self.start_population = [ind.copy() for ind in population]
         stag = 0
         
         mutation_stats = {

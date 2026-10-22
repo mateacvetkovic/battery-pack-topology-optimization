@@ -1,5 +1,5 @@
 import math
-import src.kod.containers
+import src.kod.containers as containers
 
 
 class TriangleContainerOptimizer():
